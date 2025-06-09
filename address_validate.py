@@ -61,6 +61,39 @@ def parse_validation_result(result, original_address):
         validation_result = result.get("result", {})
         verdict = validation_result.get("verdict", {})
         address_obj = validation_result.get("address", {})
+
+        validation_granularity = verdict.get("validationGranularity", "UNKNOWN")
+        address_complete = verdict.get("addressComplete", False)
+        has_inferred = verdict.get("hasInferredComponents", False)
+
+        if validation_granularity == "SUB_PREMISE":
+            status = "Highly Mailable Address (Validated to sub-unit)"
+            is_valid = True
+        elif validation_granularity == "PREMISE":
+            status = "Standard Mailable Address (Validated to building)"
+            is_valid = True
+        elif validation_granularity == "STREET":
+            status = "Partial Address (Street-level only, may not be reliably mailable)"
+            is_valid = True
+        elif validation_granularity == "LOCALITY":
+            status = "Non-Mailable Address (Only city-level validated)"
+            is_valid = False
+        elif validation_granularity == "REGION":
+            status = "Non-Mailable Address (Only region/state validated)"
+            is_valid = False
+        elif validation_granularity == "COUNTRY":
+            status = "Non-Mailable Address (Only country validated)"
+            is_valid = False
+        elif validation_granularity == "OTHER":
+            status = "Non-Mailable Address (Unknown or unvalidated)"
+            is_valid = False
+        else:
+            status = "Non-Mailable Address (Unknown validation granularity)"
+            is_valid = False
+
+        # Add inferred note if relevant
+        if has_inferred and validation_granularity in {"SUB_PREMISE", "PREMISE", "STREET"}:
+            status += " — Note: Some components were inferred."
         
         # Get formatted address
         formatted_address = address_obj.get("formattedAddress", original_address)
@@ -71,20 +104,8 @@ def parse_validation_result(result, original_address):
         lat = location.get("lat")
         lng = location.get("lng")
         
-        # Determine validation status
-        is_complete = verdict.get("inputGranularity", "") == "PREMISE"
-        has_unconfirmed = verdict.get("hasUnconfirmedComponents", False)
-        has_inferred = verdict.get("hasInferredComponents", False)
         
-        if is_complete and not has_unconfirmed:
-            status = "Valid"
-            is_valid = True
-        elif has_unconfirmed or has_inferred:
-            status = "Partially Valid (Has unconfirmed/inferred components)"
-            is_valid = False
-        else:
-            status = "Invalid"
-            is_valid = False
+       
         
         # Get USPS data if available
         usps_data = validation_result.get("uspsData", {})
@@ -146,7 +167,7 @@ def process_addresses(df, address_column, api_key, enable_cass=False):
         # Stream invalid addresses
         if not parsed_result["is_valid"]:
             invalid_count += 1
-            with invalid_placeholder.container():
+            with st.container():
                 st.error(f"**Address {idx + 1}:** {address}")
                 st.write(f"**Status:** {parsed_result['validation_status']}")
                 st.write(f"**Suggested:** {parsed_result['validated_address']}")
