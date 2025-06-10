@@ -199,8 +199,8 @@ def download_dataframe(df, filename):
     )
 
 def main():
-    st.title("🏠 Address Validation Tool")
-    st.markdown("Upload a CSV or Excel file with addresses and validate them using Google's Address Validation API")
+    st.title("🏠 Click2mail Address Validation Tool")
+    st.markdown("Upload a CSV or Excel file with addresses and validate them using Click2mail's Address Validation API")
     
     # Sidebar for API configuration
     with st.sidebar:
