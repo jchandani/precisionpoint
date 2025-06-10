@@ -8,14 +8,14 @@ import base64
 
 # Page configuration
 st.set_page_config(
-    page_title="Address Validation Tool",
+    page_title="Click2mail Address Validation Tool",
     page_icon="🏠",
     layout="wide"
 )
 
 def validate_address_google(address, api_key, enable_cass=False):
     """
-    Validate address using Google Address Validation API
+    Click2mail Address Validation Tool
     """
     url = "https://addressvalidation.googleapis.com/v1:validateAddress"
     
