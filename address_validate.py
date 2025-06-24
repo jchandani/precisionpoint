@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-def validate_address_google(address, api_key, enable_cass=False):
+def validate_address_google(address, api_key, enable_cass=True, region_code="US"):
     """
     Click2mail Address Validation Tool
     """
@@ -25,7 +25,8 @@ def validate_address_google(address, api_key, enable_cass=False):
     
     payload = {
         "address": {
-            "addressLines": [address]
+            "addressLines": [address],
+            "regionCode": region_code
         },
         "enableUspsCass": enable_cass
     }
@@ -41,7 +42,19 @@ def validate_address_google(address, api_key, enable_cass=False):
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
 
-def parse_validation_result(result, original_address):
+def _map_dpv_confirmation(code):
+    """Maps DPV confirmation codes to human-readable descriptions."""
+    mapping = {
+        'Y': 'Address confirmed (Primary and secondary if present).',
+        'N': 'Address not confirmed (No primary or secondary match).',
+        'D': 'Primary confirmed, but secondary information is missing.',
+        'S': 'Primary confirmed, secondary information exists but was not provided in the input.',
+        'C': 'Address confirmed, but it is a Commercial Mail Receiving Agency (CMRA).',
+        'B': 'Primary confirmed, but it is a PO Box or equivalent.'
+    }
+    return mapping.get(code, "Unknown DPV Confirmation Code")
+
+def parse_validation_result(result, original_address, region_code="US", enable_usps_cass=True):
     """
     Parse Google Address Validation API result
     """
@@ -109,15 +122,41 @@ def parse_validation_result(result, original_address):
         
         # Get USPS data if available
         usps_data = validation_result.get("uspsData", {})
+        metadata = validation_result.get("metadata", {})
         
+        is_po_box = metadata.get('poBox', False) if region_code == "US" else False
+        is_dpv_confirmed = (usps_data.get('dpvConfirmation') == 'Y') if region_code == "US" else False
+
+        # Define 'is_confirmed' based on high validation quality and no user intervention needed
+        is_confirmed = False
+        dpv_confirmation = usps_data.get("dpvConfirmation", "N/A")
+        dpv_confirmation_description = _map_dpv_confirmation(dpv_confirmation)
+        is_confirmed = (
+            verdict.get('validationGranularity') in ["PREMISE", "SUB_PREMISE"] and
+            verdict.get('addressComplete') and
+            not verdict.get('hasInferredComponents') and
+            not verdict.get('hasReplacedComponents') and
+            not verdict.get('unconfirmedComponentTypes') and
+            not verdict.get('missingComponentTypes') and
+            not verdict.get('unresolvedTokens')
+        )
+        if region_code == "US" and enable_usps_cass:
+            is_confirmed = is_confirmed and (usps_data.get('dpvConfirmation') == 'Y')
+
+      
         return {
             "original_address": original_address,
             "validated_address": formatted_address,
             "is_valid": is_valid,
             "validation_status": status,
-            "lat": lat,
-            "lng": lng,
-            "usps_data": usps_data if usps_data else None
+            "is_po_box": is_po_box,
+            "is_dpv_confirmed": is_dpv_confirmed,
+            "is_confirmed": is_confirmed,
+            "is_vacant": usps_data.get('dpvVacant', False) ,
+            "is_no_stat": usps_data.get('dpvNoStat', False) ,
+            "is_cmra": usps_data.get('dpvCmra', False) ,
+            "is_undeliverable": usps_data.get('undeliverable', False) ,
+            "dpv_confirmation_description": dpv_confirmation_description
         }
         
     except Exception as e:
