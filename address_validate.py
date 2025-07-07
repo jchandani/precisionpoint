@@ -25,8 +25,7 @@ def validate_address_google(address, api_key, enable_cass=True, region_code="US"
     
     payload = {
         "address": {
-            "addressLines": [address],
-            "regionCode": region_code
+            "addressLines": [address]
         },
         "enableUspsCass": enable_cass
     }
