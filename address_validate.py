@@ -13,10 +13,70 @@ st.set_page_config(
     layout="wide"
 )
 
+def geocode_address(address_text, api_key):
+    url = f"https://maps.googleapis.com/maps/api/geocode/json"
+    params = {
+        "address": address_text,
+        "key": api_key
+    }
+    response = requests.get(url, params=params)
+    response.raise_for_status()
+    data = response.json()
+    if not data['results']:
+        raise ValueError("No results found for address")
+    # Grab the first result
+    result = data['results'][0]
+    return result
+
+def build_validation_request(geocode_result, original_input):
+    address_components = geocode_result.get('address_components', [])
+    formatted_address = geocode_result.get('formatted_address', "")
+
+    components = {}
+    poi_names = []
+    for comp in address_components:
+        types = comp['types']
+        if any(t in types for t in ["point_of_interest", "establishment", "university"]):
+            if comp['long_name'] not in poi_names:
+                poi_names.append(comp['long_name'])
+        elif "locality" in types:
+            components["locality"] = comp['long_name']
+        elif "administrative_area_level_1" in types:
+            components["administrativeArea"] = comp['short_name']
+        elif "country" in types:
+            components["regionCode"] = comp['short_name']
+        elif "postal_code" in types:
+            components["postalCode"] = comp['long_name']
+
+    # Build smart address lines
+    address_lines = []
+    for name in poi_names:
+        address_lines.append(name)
+
+    # Always keep the original input to ensure important names like "Harvard"
+    if original_input not in address_lines:
+        address_lines.insert(0, original_input)
+    
+    # Add the formatted address last
+    if formatted_address not in address_lines:
+        address_lines.append(formatted_address)
+
+    components.setdefault("regionCode", "US")
+    components["addressLines"] = address_lines
+
+    return {
+        "address": components
+    }
+
 def validate_address_google(address, api_key, enable_cass=True, region_code="US"):
     """
     Click2mail Address Validation Tool
     """
+
+    geocode_result = geocode_address(address, api_key)
+    validation_request = build_validation_request(geocode_result, address)
+
+
     url = "https://addressvalidation.googleapis.com/v1:validateAddress"
     
     headers = {
@@ -35,7 +95,7 @@ def validate_address_google(address, api_key, enable_cass=True, region_code="US"
     }
     
     try:
-        response = requests.post(url, headers=headers, json=payload, params=params)
+        response = requests.post(url, headers=headers, json=validation_request, params=params)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
